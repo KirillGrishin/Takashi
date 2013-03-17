@@ -1,21 +1,23 @@
 package Takashi
 
 /**
- *
+ * Finds a list of the best routes (one or more if there are several routes with same result). "Best" is defined
+ * by an instance of Ordering[Path].
  */
+
 object RoutesFinder {
 
   type Distance = Int
   type Fare = Int
 
   case class Station(name: String) {
-    def availableRoutes(implicit routes: Map[Station,List[(Station,Distance,Fare)]]) = routes(this)
+    def availableRoutes(routes: Map[Station,List[(Station,Distance,Fare)]]) = routes(this)
   }
 
-  case class Path(start: Station, goal: Station, visitedStations: List[Station], distance: Distance, fare: Fare) {
-    lazy val currentStation = visitedStations.headOption.getOrElse(start)
-    lazy val goalReached = visitedStations.headOption == Some(goal)
-    lazy val result = (visitedStations.reverse, distance, fare)
+  case class Path(goal: Station, visitedStations: List[Station], distance: Distance, fare: Fare) {
+    require(visitedStations.nonEmpty)
+    lazy val currentStation = visitedStations.head
+    lazy val goalReached = visitedStations.head == goal
   }
 
 }
@@ -24,7 +26,7 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
 
   import RoutesFinder._
 
-  implicit val routes: Map[Station,List[(Station,Distance,Fare)]] = {
+  val routes: Map[Station,List[(Station,Distance,Fare)]] = {
     val initial: Map[Station,List[(Station, Distance, Fare)]] = Map().withDefaultValue(List())
     (input foldLeft initial) {
       case (acc, (start, goal, distance, fare)) =>
@@ -57,9 +59,9 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
       // Extend activePathsWithPossiblyBetterResults with new stations (excluding visited ones)
       val pathsWithNextStations = for {
         path <- pathsWithoutGoalWithPossiblyBetterResults
-        res  <- path.currentStation.availableRoutes collect {
+        res  <- path.currentStation.availableRoutes(routes) collect {
           case (station, distance, fare) if ! (path.visitedStations contains station) =>
-            new Path(path.start, path.goal, station::path.visitedStations, path.distance + distance, path.fare + fare)
+            new Path(path.goal, station::path.visitedStations, path.distance + distance, path.fare + fare)
         }
       } yield res
       // Make recursive call with updated input data
@@ -69,8 +71,8 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
   }
 
   def findRoutes(start: String, goal: String, policy: Ordering[Path]) = {
-    val initialPath = Path(Station(start), Station(goal), List(), 0, 0)
-    solve(policy, List(initialPath))
+    val initialPath = Path(Station(goal), List(Station(start)), 0, 0)
+    solve(policy, List(initialPath)) map { case Path(_, route, distance, fare) => (route.reverse, distance, fare)}
   }
 
   def findRoutesByDistance(start: String, goal: String) = {
