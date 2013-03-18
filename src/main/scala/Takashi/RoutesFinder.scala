@@ -1,5 +1,7 @@
 package Takashi
 
+import annotation.tailrec
+
 /**
  * Finds a list of the best routes (one or more if there are several routes with same result). "Best" is defined
  * by an instance of Ordering[Path].
@@ -14,7 +16,7 @@ object RoutesFinder {
     def availableRoutes(routes: Map[Station,List[(Station,Distance,Fare)]]) = routes(this)
   }
 
-  case class Path(goal: Station, visitedStations: List[Station], distance: Distance, fare: Fare) {
+  case class Path (goal: Station, visitedStations: List[Station], distance: Distance, fare: Fare) {
     require(visitedStations.nonEmpty)
     lazy val currentStation = visitedStations.head
     lazy val goalReached = visitedStations.head == goal
@@ -34,10 +36,23 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
     }
   }
 
+  /**
+   * Main function that makes the calculation; accepts an initial path with start station in the list of
+   * visited stations and recursively expands it to all available stations
+   *
+   * @param policy an instance of Ordering[Path]; this is used to decide how paths are compared
+   * @param pathsWithoutGoal for the first call to this function this parameter is a singleton list and its single
+   *                         element is a Path instance with distance and fare set to 0, and start station being
+   *                         the only element in visitedStations
+   * @param pathsWithGoal a list of paths where the destination station is reached; empty on the initial call
+   * @return A list of paths with best result (according to policy)
+   */
+  @tailrec
   private def solve(policy: Ordering[Path], pathsWithoutGoal: List[Path], pathsWithGoal: List[Path] = List()): List[Path] = {
 
     val (newPathsWithGoal, newPathsWithoutGoal) = pathsWithoutGoal partition ( _.goalReached )
 
+    // Find shortest paths among all paths with goal
     val mergedPathsWithGoal = newPathsWithGoal ++ pathsWithGoal
     val bestPathsWithGoal =
       if (mergedPathsWithGoal.isEmpty)
@@ -47,12 +62,14 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
         mergedPathsWithGoal filter ( policy.equiv(_, bestPathWithGoal) )
       }
 
-    lazy val pathsWithoutGoalWithPossiblyBetterResults =
+    // Find paths which may still produce better result (e.g. with distance or fare better than current best result)
+    val pathsWithoutGoalWithPossiblyBetterResults =
       if (bestPathsWithGoal.isEmpty)
         newPathsWithoutGoal
       else
         newPathsWithoutGoal filter ( policy.lteq(_, bestPathsWithGoal.head) )
 
+    // If there are no paths shorter than the best current result, then exit the the function
     if (pathsWithoutGoalWithPossiblyBetterResults.isEmpty)
       bestPathsWithGoal
     else {
@@ -61,10 +78,10 @@ class RoutesFinder(input: List[(String, String, Int, Int)]) {
         path <- pathsWithoutGoalWithPossiblyBetterResults
         res  <- path.currentStation.availableRoutes(routes) collect {
           case (station, distance, fare) if ! (path.visitedStations contains station) =>
-            new Path(path.goal, station::path.visitedStations, path.distance + distance, path.fare + fare)
+            Path(path.goal, station::path.visitedStations, path.distance + distance, path.fare + fare)
         }
       } yield res
-      // Make recursive call with updated input data
+
       solve(policy, pathsWithNextStations, bestPathsWithGoal)
     }
 
